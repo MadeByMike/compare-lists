@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>
+	</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="description" content="">
+	<meta name="author" content="">
+	<!-- Le styles -->
+	<link href="css/bootstrap.min.css" rel="stylesheet">
+	<link href="css/bootstrap-responsive.min.css" rel="stylesheet">
+	<style>
+		#compareLeft textarea,
+		#compareRight textarea,
+		#compareResult textarea{
+			width: 100%;
+			min-height: 250px;
+			-webkit-box-sizing: border-box;
+			-moz-box-sizing: border-box;
+			box-sizing: border-box;
+		}
+		#compareLeft .count,
+		#compareRight .count,
+		#compareResult .count{
+			float: right;
+			margin-top: -5px;
+			font-size: 70%;
+		}
+		#loading-indicator{
+			display: none;
+			background:#fff;
+			opacity:.8;
+			position:fixed;
+			top:0;
+			right:0;
+			bottom:0;
+			left:0;
+			z-index:1040;
+		}
+		#loading-indicator img{
+			position: fixed;
+			top: 40%;
+			left: 50%;
+			margin-top: -50px;
+			margin-left: -100px;
+		}
+	</style>
+	<!-- Le HTML5 shim, for IE6-8 support of HTML5 elements -->
+	<!--[if lt IE 9]>
+		<script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+	<![endif]-->
+</head>
+<body>
+	<div  id="loading-indicator"><img src="img/loader.gif" style="" /></div>
+	<div class="container">
+		<h1>Compare lists</h1>
+		<p><strong>I want to...</strong></p>
+		<div class="control-group">
+			<div class="controls">
+				<div class="control-group">
+					<div class="controls">
+						<label class="radio"><input type="radio" checked="checked" name="compareType" value="left">Find items in list 1 but not in list 2</label>
+						<label class="radio"><input type="radio" name="compareType" value="right">Find items in list 2 but not in list 1</label>
+						<label class="radio"><input type="radio" name="compareType" value="either">Find items in either list but not in both</label>
+						<label class="radio"><input type="radio" name="compareType" value="both">Find items in both lists</label>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="row-fluid">
+			<div id="compareLeft" class="span4">
+				<div class="control-group">
+					<label class="control-label">List 1:</label>
+					<div class="controls">
+						<textarea></textarea>
+					</div>
+					<span class='text-error'></span>
+					<span class="count">0</span>
+				</div>
+			</div>
+			<div id="compareRight" class="span4">
+				<div class="control-group">
+					<label class="control-label">List 2:</label>
+					<div class="controls">
+						<textarea></textarea>
+					</div>
+					<span class='text-error'></span>
+					<span class="count">0</span>
+				</div>
+			</div>
+			<div id="compareResult" class="span4">
+				<div class="control-group">
+					<label class="control-label">Your results:</label>
+					<div class="controls">
+						<textarea></textarea>
+					</div>
+					<span class='text-error'></span>
+					<span class="count">0</span>
+				</div>
+			</div>
+		</div>
+	</div> <!-- /container -->
+	<script src="js/jquery-1.9.1.min.js"></script>
+	<script id="processlists" type="javascript/worker">
+		/* For worker enabled browsers only */
+		if (!Array.prototype.filter){
+			Array.prototype.filter = function(fun /*, thisp*/){
+				"use strict";
+				if (this == null)
+				  throw new TypeError();
+
+				var t = Object(this);
+				var len = t.length >>> 0;
+				if (typeof fun != "function")
+				  throw new TypeError();
+
+				var res = [];
+				var thisp = arguments[1];
+				for (var i = 0; i < len; i++){
+				  if (i in t)
+				  {
+					var val = t[i]; // in case fun mutates this
+					if (fun.call(thisp, val, i, t))
+					  res.push(val);
+				  }
+				}
+				return res;
+			};
+		}
+		if (!Array.prototype.indexOf) {
+			Array.prototype.indexOf = function (searchElement /*, fromIndex */ ) {
+				"use strict";
+				if (this == null) {
+					throw new TypeError();
+				}
+				var t = Object(this);
+				var len = t.length >>> 0;
+				if (len === 0) {
+					return -1;
+				}
+				var n = 0;
+				if (arguments.length > 1) {
+					n = Number(arguments[1]);
+					if (n != n) { // shortcut for verifying if it's NaN
+						n = 0;
+					} else if (n != 0 && n != Infinity && n != -Infinity) {
+						n = (n > 0 || -1) * Math.floor(Math.abs(n));
+					}
+				}
+				if (n >= len) {
+					return -1;
+				}
+				var k = n >= 0 ? n : Math.max(len - Math.abs(n), 0);
+				for (; k < len; k++) {
+					if (k in t && t[k] === searchElement) {
+						return k;
+					}
+				}
+				return -1;
+			}
+		}
+		if(!String.prototype.trim) {
+			String.prototype.trim = function () {
+				return this.replace(/^\s+|\s+$/g,'');
+			};
+		}
+		/* It's ok to expect that a browser that supports web workers supports the above? */
+		
+		var processLists = function(data){
+			var left = data.left.split('\n').filter(function(v){return v.trim() !==''} );
+			var right = data.right.split('\n').filter(function(v){return v.trim() !==''});
+			var differenceLeft = [];
+			var differenceRight = [];
+			var inBothLists = [];
+
+			for (var i = 0; i < left.length; i++) {
+				if (right.indexOf(left[i]) == -1){
+					differenceLeft.push(left[i]);
+				}else{
+					if(inBothLists.indexOf(left[i]) == -1) {
+						inBothLists.push(left[i]);
+					}
+				}
+			}
+			for (var i = 0; i < right.length; i++) {
+				if (left.indexOf(right[i]) == -1){
+					differenceRight.push(right[i]);
+				}else{
+					if(inBothLists.indexOf(right[i]) == -1) {
+						inBothLists.push(right[i]);
+					}
+				}
+			}
+			self.postMessage({'cmd':'processlists','differenceLeft': differenceLeft, 'differenceRight': differenceRight, 'inBothLists':inBothLists, 'left': left, 'right':right});
+		}
+		var isUnique = function(data){
+			var left = data.left;
+			var right = data.right;
+			var unique = [];
+			for (var i = 0; i < left.length; i++) {
+				if(unique.indexOf(left[i]) > -1) {
+					self.postMessage({'cmd':'dupes1'});
+					break;
+				} else{
+					unique.push(left[i]);
+				}
+			}
+			unique = [];
+			for (var i = 0; i < right.length; i++) {
+				if(unique.indexOf(right[i]) > -1) {
+					self.postMessage({'cmd':'dupes2'});
+					break;
+				} else{
+					unique.push(left[i]);
+				}
+			}
+		}
+		self.addEventListener('message', function(e) {
+			var data = e.data;
+			switch (data.cmd) {
+				case 'processlists':
+					processLists(data);
+				break;
+				case 'isUnique':
+					isUnique(data);
+				break;
+			};
+		}, false);
+	</script>
+	<script>
+	$(function(){
+		var left = [];
+		var right = [];
+		var differenceLeft = [];
+		var differenceRight = [];
+		var inBothLists = [];
+
+		var updateResults = function(){
+			$('#loading-indicator').show();
+			$('#compareResult textarea').val('');
+			var compareType = $('input[name=compareType]:checked').val();
+			var resultList = [];
+			switch (compareType) { 
+				case 'left':
+					resultList = differenceLeft;
+					break
+				case 'right':
+					resultList = differenceRight;
+					break
+				case 'either':
+					resultList = $.merge( $.merge([],differenceLeft), differenceRight);
+					break
+				case 'both':
+					resultList = inBothLists;
+					break
+			}
+			$.each(resultList, function(i){
+				$('#compareResult textarea').val($('#compareResult textarea').val() + resultList[i] +"\n"); 
+			});
+			$('#compareLeft .count').html(left.length);
+			$('#compareRight .count').html(right.length);
+			$('#compareResult .count').html(resultList.length);
+			$('#loading-indicator').hide();
+		}
+
+		/* For non-worker enabled browsers */
+		if (!Array.prototype.filter){
+			Array.prototype.filter = function(fun /*, thisp*/){
+				"use strict";
+				if (this == null)
+				  throw new TypeError();
+
+				var t = Object(this);
+				var len = t.length >>> 0;
+				if (typeof fun != "function")
+				  throw new TypeError();
+
+				var res = [];
+				var thisp = arguments[1];
+				for (var i = 0; i < len; i++){
+				  if (i in t)
+				  {
+					var val = t[i]; // in case fun mutates this
+					if (fun.call(thisp, val, i, t))
+					  res.push(val);
+				  }
+				}
+				return res;
+			};
+		}
+		if (!Array.prototype.indexOf) {
+			Array.prototype.indexOf = function (searchElement /*, fromIndex */ ) {
+				"use strict";
+				if (this == null) {
+					throw new TypeError();
+				}
+				var t = Object(this);
+				var len = t.length >>> 0;
+				if (len === 0) {
+					return -1;
+				}
+				var n = 0;
+				if (arguments.length > 1) {
+					n = Number(arguments[1]);
+					if (n != n) { // shortcut for verifying if it's NaN
+						n = 0;
+					} else if (n != 0 && n != Infinity && n != -Infinity) {
+						n = (n > 0 || -1) * Math.floor(Math.abs(n));
+					}
+				}
+				if (n >= len) {
+					return -1;
+				}
+				var k = n >= 0 ? n : Math.max(len - Math.abs(n), 0);
+				for (; k < len; k++) {
+					if (k in t && t[k] === searchElement) {
+						return k;
+					}
+				}
+				return -1;
+			}
+		}
+		if(!String.prototype.trim) {
+			String.prototype.trim = function () {
+				return this.replace(/^\s+|\s+$/g,'');
+			};
+		}
+		var isUnique = function(){
+			var unique = [];
+			for (var i = 0; i < left.length; i++) {
+				$('.text-error').html('');
+				$('#compareLeft .control-group,#compareRight .control-group').removeClass('error');
+				if(unique.indexOf(left[i]) > -1) {
+						$('#compareLeft .control-group').addClass('error');
+						$('#compareLeft .text-error').html('This list contains duplicates.');
+					break;
+				} else{
+					unique.push(left[i]);
+				}
+			}
+			unique = [];
+			for (var i = 0; i < right.length; i++) {
+				if(unique.indexOf(right[i]) > -1) {
+						$('#compareRight .control-group').addClass('error');
+						$('#compareRight .text-error').html('This list contains duplicates.');
+					break;
+				} else{
+					unique.push(right[i]);
+				}
+			}
+		}
+		var processLists = function(){
+			left = $('#compareLeft textarea').val().split('\n').filter(function(v){return v.trim() !==''} );
+			right = $('#compareRight textarea').val().split('\n').filter(function(v){return v.trim() !==''} );
+			inBothLists = [];
+			differenceLeft = [];
+			differenceRight = [];
+			for (var i = 0; i < left.length; i++) {
+				console.log(right.indexOf(left[i]));
+				if (right.indexOf(left[i]) == -1){
+					if(differenceLeft.indexOf(left[i]) == -1) {
+						differenceLeft.push(left[i]);
+					}
+				}else{
+					if(inBothLists.indexOf(left[i]) == -1) {
+						inBothLists.push(left[i]);
+					}
+				}
+			}
+			for (var i = 0; i < right.length; i++) {
+				if (left.indexOf(right[i]) == -1){
+					if(differenceRight.indexOf(right[i]) == -1) {
+						differenceRight.push(right[i]);
+					}
+				}else{
+					if(inBothLists.indexOf(right[i]) == -1) {
+						inBothLists.push(right[i]);
+					}
+				}
+			}
+			isUnique();
+			updateResults();
+		}
+		/* End for non-worker enabled browsers */
+
+		if(window.Worker){
+			$('h1').after('<p class="text-success">Yay! You\'re using a modern web browser. We should be able to process large lists quickly.</p>');
+			var blob = new Blob([document.querySelector('#processlists').textContent]);
+			var worker = new Worker(window.URL.createObjectURL(blob));
+			var processListsNowWithWorkers = function(){
+				worker.onmessage = function(e) {
+					var data = e.data;
+					switch (data.cmd) {
+						case 'db':
+							console.log(data);
+						break;
+						case 'processlists':
+							differenceLeft = data.differenceLeft;
+							differenceRight = data.differenceRight;
+							inBothLists = data.inBothLists;
+							left = data.left;
+							right = data.right;
+							$('#compareLeft .control-group,#compareRight .control-group').removeClass('error');
+							$('.text-error').html('');
+							worker.postMessage({'cmd': 'isUnique', 'left': left, 'right': right});
+							updateResults();
+						break;
+						case 'dupes1':
+							$('#compareLeft .control-group').addClass('error');
+							$('#compareLeft .text-error').html('This list contains duplicates.');
+						break;
+						case 'dupes2':
+							$('#compareRight .control-group').addClass('error');
+							$('#compareRight .text-error').html('This list contains duplicates.');
+						break;
+					}
+				}
+				left = $('#compareLeft textarea').val();
+				right = $('#compareRight textarea').val();
+				worker.postMessage({'cmd': 'processlists', 'left': left, 'right': right});
+			}
+			$('#compareLeft textarea,#compareRight textarea').change(processListsNowWithWorkers);
+		}else{
+			$('h1').after('<p class="text-warning">Your web browser is not be capable of comparing large lists efficiently. :( </p>');
+			$('#compareLeft textarea,#compareRight textarea').change(processLists);
+		}
+		$('input[name=compareType]').change(updateResults);
+
+	});
+	</script>
+  </body>
+</html>
