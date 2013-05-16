@@ -14,4 +14,4 @@ Demo:
 http://madebymike.github.io/compare-lists/
 
 
-Note: The GitHub files uses inline web workers so that it will work on the local file system.
+Note: The GitHub files use inline web workers so that it will work on the local file system.
